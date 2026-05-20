@@ -1,0 +1,27 @@
+{
+  "package_id": "com.fowlerto.evenmenu",
+  "edition": "202601",
+  "name": "Smart Menu",
+  "version": "0.1.0",
+  "min_app_version": "2.0.0",
+  "min_sdk_version": "0.0.10",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "g2-microphone",
+      "desc": "Record voice for reminders and meeting transcription"
+    },
+    {
+      "name": "network",
+      "desc": "Deepgram transcription, Cloudflare calendar/reminder, Anthropic AI cues",
+      "whitelist": [
+        "https://api.deepgram.com",
+        "https://even-calendar.fowlerto.workers.dev",
+        "https://api.anthropic.com"
+      ]
+    }
+  ],
+  "supported_languages": [
+    "en"
+  ]
+}
