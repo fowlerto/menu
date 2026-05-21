@@ -27,7 +27,7 @@ export function onDeepgramStatus(cb: (status: string) => void) {
 
 function buildWsUrl(): string {
   // encoding + sample_rate required for raw PCM (G2 mic: 16kHz signed 16-bit LE mono)
-  return `wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&punctuate=true`
+  return `wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&punctuate=true&interim_results=true&endpointing=500`
 }
 
 export async function startStreaming(transcriptCb: TranscriptCallback): Promise<void> {

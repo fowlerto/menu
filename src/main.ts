@@ -15,22 +15,25 @@ import {
   initReminder, enterReminder, exitReminder,
   handleReminderInput, getReminderState,
 } from './modules/reminder.ts'
+import { initAskClaude, enterAskClaude, exitAskClaude, handleAskClaudeInput } from './modules/askClaude.ts'
 
-const DEEPGRAM_KEY = import.meta.env.VITE_DEEPGRAM_KEY as string
+const DEEPGRAM_KEY  = import.meta.env.VITE_DEEPGRAM_KEY  as string
+const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY as string
 
-type AppState = 'minimal' | 'menu' | 'calendar' | 'reminder'
+type AppState = 'minimal' | 'menu' | 'calendar' | 'reminder' | 'askClaude'
 
 let state: AppState = 'minimal'
 let pageCreated = false
 let clockInterval: ReturnType<typeof setInterval> | null = null
 
-const MENU_ITEMS = ['Calendar', 'Add Reminder']
+const MENU_ITEMS = ['Calendar', 'Add Reminder', 'Ask Claude']
 
 const bridge: EvenAppBridge = await waitForEvenAppBridge()
 initDeepgram(bridge)
 configureDeepgram(DEEPGRAM_KEY)
 initCalendar(bridge)
 initReminder(bridge)
+initAskClaude(bridge, ANTHROPIC_KEY)
 
 await showMinimal()
 
@@ -51,6 +54,7 @@ bridge.onEvenHubEvent(async (event) => {
       case OsEventTypeList.ABNORMAL_EXIT_EVENT:
       case OsEventTypeList.SYSTEM_EXIT_EVENT:
         await exitReminder()
+        await exitAskClaude()
         return
       case OsEventTypeList.IMU_DATA_REPORT:
         return
@@ -66,9 +70,9 @@ bridge.onEvenHubEvent(async (event) => {
   // Simulator sends sysEvent with undefined eventType for single-tap
   const isClick = type === OsEventTypeList.CLICK_EVENT || rawType === undefined
   const isDoubleClick = type === OsEventTypeList.DOUBLE_CLICK_EVENT
-  const isScroll =
-    type === OsEventTypeList.SCROLL_TOP_EVENT ||
-    type === OsEventTypeList.SCROLL_BOTTOM_EVENT
+  const isScrollUp   = type === OsEventTypeList.SCROLL_TOP_EVENT
+  const isScrollDown = type === OsEventTypeList.SCROLL_BOTTOM_EVENT
+  const isScroll     = isScrollUp || isScrollDown
 
   // ── Minimal ────────────────────────────────────────────────────────────────
   if (state === 'minimal') {
@@ -104,6 +108,17 @@ bridge.onEvenHubEvent(async (event) => {
       return
     }
     await handleReminderInput(isClick, isScroll)
+    return
+  }
+
+  // ── Ask Claude ─────────────────────────────────────────────────────────────
+  if (state === 'askClaude') {
+    if (isDoubleClick) {
+      await exitAskClaude()
+      await showMenu()
+      return
+    }
+    await handleAskClaudeInput(isClick, isScrollUp, isScrollDown)
   }
 })
 
@@ -135,9 +150,16 @@ async function showMenu() {
   stopClock()
   state = 'menu'
   await bridge.rebuildPageContainer(new RebuildPageContainer({
-    containerTotalNum: 1,
+    containerTotalNum: 2,
+    textObject: [new TextContainerProperty({
+      xPosition: 0, yPosition: 0, width: 576, height: 28,
+      borderWidth: 0, paddingLength: 4,
+      containerID: 2, containerName: 'header',
+      content: formatMenuHeader(),
+      isEventCapture: 0,
+    })],
     listObject: [new ListContainerProperty({
-      xPosition: 0, yPosition: 0, width: 576, height: 288,
+      xPosition: 0, yPosition: 28, width: 576, height: 260,
       borderWidth: 0, paddingLength: 8,
       containerID: 1, containerName: 'menu',
       isEventCapture: 1,
@@ -149,15 +171,19 @@ async function showMenu() {
       }),
     })],
   }))
+  startClock()
 }
 
 async function launchModule(idx: number) {
   if (idx === 0) {
     state = 'calendar'
     await enterCalendar()
-  } else {
+  } else if (idx === 1) {
     state = 'reminder'
     await enterReminder()
+  } else {
+    state = 'askClaude'
+    await enterAskClaude()
   }
 }
 
@@ -173,12 +199,19 @@ function minimalContainer(content: string): TextContainerProperty {
 
 // ── Clock ──────────────────────────────────────────────────────────────────────
 
+function formatTime(): string {
+  return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 function formatMinimalLine(): string {
-  const left = 'Smart Menu'
-  const right = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  // G2 display ~34 chars per line at default font size
-  const spaces = Math.max(2, 34 - left.length - right.length)
-  return left + ' '.repeat(spaces) + right
+  const time = formatTime()
+  return ' '.repeat(Math.max(0, 34 - time.length)) + time
+}
+
+function formatMenuHeader(): string {
+  const left = 'Smart Dashboard'
+  const time = formatTime()
+  return left + ' '.repeat(Math.max(1, 34 - left.length - time.length)) + time
 }
 
 function startClock() {
@@ -186,6 +219,8 @@ function startClock() {
   clockInterval = setInterval(() => {
     if (state === 'minimal') {
       bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 1, content: formatMinimalLine() }))
+    } else if (state === 'menu') {
+      bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 2, content: formatMenuHeader() }))
     }
   }, 60000)
 }
