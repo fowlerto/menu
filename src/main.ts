@@ -9,6 +9,7 @@ import {
   OsEventTypeList,
 } from '@evenrealities/even_hub_sdk'
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { getTextWidth } from '@evenrealities/pretext'
 import { initDeepgram, configureDeepgram, sendAudioData } from './audio/deepgram.ts'
 import { initCalendar, enterCalendar } from './modules/calendar.ts'
 import {
@@ -25,6 +26,15 @@ type AppState = 'minimal' | 'menu' | 'calendar' | 'reminder' | 'askClaude'
 let state: AppState = 'minimal'
 let pageCreated = false
 let clockInterval: ReturnType<typeof setInterval> | null = null
+let lastMinimalTimeW = 0
+let lastMenuTimeW = 0
+
+const TIME_PAD = 4
+
+function timeDims(time: string): { x: number; w: number } {
+  const w = getTextWidth(time) + 2 * TIME_PAD
+  return { x: 576 - w, w }
+}
 
 const MENU_ITEMS = ['Calendar', 'Add Reminder', 'Ask Claude']
 
@@ -128,36 +138,62 @@ bridge.onEvenHubEvent(async (event) => {
 async function showMinimal() {
   stopClock()
   state = 'minimal'
-  const content = formatMinimalLine()
+  const time = formatTime()
+  const { x, w } = timeDims(time)
 
-  if (!pageCreated) {
-    await bridge.createStartUpPageContainer(new CreateStartUpPageContainer({
-      containerTotalNum: 1,
-      textObject: [minimalContainer(content)],
-    }))
-    pageCreated = true
-  } else {
-    await bridge.rebuildPageContainer(new RebuildPageContainer({
-      containerTotalNum: 1,
-      textObject: [minimalContainer(content)],
-    }))
+  const containers = {
+    containerTotalNum: 2,
+    textObject: [
+      new TextContainerProperty({
+        xPosition: 0, yPosition: 0, width: 576, height: 288,
+        borderWidth: 0, paddingLength: 0,
+        containerID: 1, containerName: 'minEvt',
+        content: ' ', isEventCapture: 1,
+      }),
+      new TextContainerProperty({
+        xPosition: x, yPosition: 0, width: w, height: 28,
+        borderWidth: 0, paddingLength: TIME_PAD,
+        containerID: 2, containerName: 'minTime',
+        content: time, isEventCapture: 0,
+      }),
+    ],
   }
 
+  if (!pageCreated) {
+    await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(containers))
+    pageCreated = true
+  } else {
+    await bridge.rebuildPageContainer(new RebuildPageContainer(containers))
+  }
+
+  lastMinimalTimeW = w
   startClock()
 }
 
 async function showMenu() {
   stopClock()
   state = 'menu'
+  const time = formatTime()
+  const { x, w } = timeDims(time)
+
   await bridge.rebuildPageContainer(new RebuildPageContainer({
-    containerTotalNum: 2,
-    textObject: [new TextContainerProperty({
-      xPosition: 0, yPosition: 0, width: 576, height: 28,
-      borderWidth: 0, paddingLength: 4,
-      containerID: 2, containerName: 'header',
-      content: formatMenuHeader(),
-      isEventCapture: 0,
-    })],
+    containerTotalNum: 3,
+    textObject: [
+      new TextContainerProperty({
+        xPosition: 0, yPosition: 0, width: x, height: 28,
+        borderWidth: 0, paddingLength: 4,
+        containerID: 2, containerName: 'header',
+        content: 'Smart Dashboard',
+        isEventCapture: 0,
+      }),
+      new TextContainerProperty({
+        xPosition: x, yPosition: 0, width: w, height: 28,
+        borderWidth: 0, paddingLength: TIME_PAD,
+        containerID: 3, containerName: 'menuTime',
+        content: time,
+        isEventCapture: 0,
+      }),
+    ],
     listObject: [new ListContainerProperty({
       xPosition: 0, yPosition: 28, width: 576, height: 260,
       borderWidth: 0, paddingLength: 8,
@@ -171,6 +207,8 @@ async function showMenu() {
       }),
     })],
   }))
+
+  lastMenuTimeW = w
   startClock()
 }
 
@@ -187,40 +225,29 @@ async function launchModule(idx: number) {
   }
 }
 
-function minimalContainer(content: string): TextContainerProperty {
-  return new TextContainerProperty({
-    xPosition: 0, yPosition: 0, width: 576, height: 288,
-    borderWidth: 0, paddingLength: 8,
-    containerID: 1, containerName: 'minimal',
-    content, isEventCapture: 1,
-  })
-}
-
-
 // ── Clock ──────────────────────────────────────────────────────────────────────
 
 function formatTime(): string {
   return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
-function formatMinimalLine(): string {
-  const time = formatTime()
-  return ' '.repeat(Math.max(0, 34 - time.length)) + time
-}
-
-function formatMenuHeader(): string {
-  const left = 'Smart Dashboard'
-  const time = formatTime()
-  return left + ' '.repeat(Math.max(1, 34 - left.length - time.length)) + time
-}
-
 function startClock() {
   stopClock()
-  clockInterval = setInterval(() => {
+  clockInterval = setInterval(async () => {
+    const time = formatTime()
+    const { w } = timeDims(time)
     if (state === 'minimal') {
-      bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 1, content: formatMinimalLine() }))
+      if (w !== lastMinimalTimeW) {
+        await showMinimal()
+      } else {
+        bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 2, content: time }))
+      }
     } else if (state === 'menu') {
-      bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 2, content: formatMenuHeader() }))
+      if (w !== lastMenuTimeW) {
+        await showMenu()
+      } else {
+        bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: 3, content: time }))
+      }
     }
   }, 60000)
 }

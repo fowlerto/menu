@@ -1,8 +1,8 @@
 {
   "package_id": "com.fowlerto.evenmenu",
   "edition": "202601",
-  "name": "Smart Menu",
-  "version": "0.1.0",
+  "name": "Smart Menu 0.2.0",
+  "version": "0.2.0",
   "min_app_version": "2.0.0",
   "min_sdk_version": "0.0.10",
   "entrypoint": "index.html",

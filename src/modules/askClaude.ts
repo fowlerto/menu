@@ -3,7 +3,7 @@ import { RebuildPageContainer, TextContainerProperty, TextContainerUpgrade } fro
 import { startStreaming, stopStreaming, isStreaming } from '../audio/deepgram.ts'
 import { measureTextWrap } from '@evenrealities/pretext'
 
-const MODEL       = 'claude-haiku-4-5-20251001'
+const MODEL       = 'claude-sonnet-4-6'
 const MAX_TOKENS  = 500
 const SILENCE_MS  = 2000
 const MAX_HISTORY = 3   // conversation pairs before reset
